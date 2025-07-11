@@ -1,8 +1,7 @@
 // game.test.js
-
-// Access functions and variables from game.js (assuming it's loaded globally before this script)
-// This is not ideal for unit testing but a consequence of game.js's current structure.
-// For a more robust setup, game.js would need to export its functions.
+import * as GameLogic from './gameLogic.js';
+// PlayerInventory is used by gameLogic, so we might need to import it if we are testing inventory interactions via gameLogic
+// However, for now, playerInventory is instantiated within gameLogic.js and exported.
 
 let testsPassed = 0;
 let testsFailed = 0;
@@ -69,152 +68,148 @@ function testFishAIHelpers() {
 
 
     // isFishActive tests
-    assertTrue(isFishActive(perchSpecies, 7), "Perch active at 7 AM");
-    assertFalse(isFishActive(perchSpecies, 5), "Perch inactive at 5 AM");
-    assertFalse(isFishActive(perchSpecies, 9), "Perch inactive at 9 AM (exclusive endHour)");
-    assertTrue(isFishActive(pikeSpecies, 23), "Pike active at 23 PM (overnight)");
-    assertTrue(isFishActive(pikeSpecies, 1), "Pike active at 1 AM (overnight)");
-    assertFalse(isFishActive(pikeSpecies, 3), "Pike inactive at 3 AM (overnight)");
-    assertTrue(isFishActive(speciesNoActivity, 12), "Fish with no activity period is active");
-    assertFalse(isFishActive(speciesEmptyActivity, 12), "Fish with empty activity period is inactive");
+    assertTrue(GameLogic.isFishActive(perchSpecies, 7), "Perch active at 7 AM");
+    assertFalse(GameLogic.isFishActive(perchSpecies, 5), "Perch inactive at 5 AM");
+    assertFalse(GameLogic.isFishActive(perchSpecies, 9), "Perch inactive at 9 AM (exclusive endHour)");
+    assertTrue(GameLogic.isFishActive(pikeSpecies, 23), "Pike active at 23 PM (overnight)");
+    assertTrue(GameLogic.isFishActive(pikeSpecies, 1), "Pike active at 1 AM (overnight)");
+    assertFalse(GameLogic.isFishActive(pikeSpecies, 3), "Pike inactive at 3 AM (overnight)");
+    assertTrue(GameLogic.isFishActive(speciesNoActivity, 12), "Fish with no activity period is active");
+    assertFalse(GameLogic.isFishActive(speciesEmptyActivity, 12), "Fish with empty activity period is inactive");
 
     // getBaitPreferenceScore tests
-    assertEquals(getBaitPreferenceScore(perchSpecies, "worm"), 0.9, "Perch worm preference");
-    assertEquals(getBaitPreferenceScore(perchSpecies, "lure"), 0.5, "Perch lure preference");
-    assertEquals(getBaitPreferenceScore(perchSpecies, "bread"), 0.1, "Perch non-listed bait preference");
-    assertEquals(getBaitPreferenceScore(speciesNoPrefs, "worm"), 0.1, "Fish with no bait prefs");
-    assertEquals(getBaitPreferenceScore({ name: "Empty Prefs", baitPreferences: {} }, "worm"), 0.1, "Fish with empty bait prefs");
+    assertEquals(GameLogic.getBaitPreferenceScore(perchSpecies, "worm"), 0.9, "Perch worm preference");
+    assertEquals(GameLogic.getBaitPreferenceScore(perchSpecies, "lure"), 0.5, "Perch lure preference");
+    assertEquals(GameLogic.getBaitPreferenceScore(perchSpecies, "bread"), 0.1, "Perch non-listed bait preference");
+    assertEquals(GameLogic.getBaitPreferenceScore(speciesNoPrefs, "worm"), 0.1, "Fish with no bait prefs");
+    assertEquals(GameLogic.getBaitPreferenceScore({ name: "Empty Prefs", baitPreferences: {} }, "worm"), 0.1, "Fish with empty bait prefs");
 }
 
 function testGameTime() {
     window.testLogger.log("--- Testing Game Time Logic ---");
 
-    // Note: This test directly manipulates global game time variables.
-    // It also doesn't directly test updateGameTime with deltaTime, but its core logic.
-    let originalHours = gameTimeHours;
-    let originalMinutes = gameTimeMinutes;
+    let originalHours = GameLogic.gameTimeHours;
+    let originalMinutes = GameLogic.gameTimeMinutes;
 
-    gameTimeHours = 6;
-    gameTimeMinutes = 58;
-    // Simulate gameTimeMinutes += deltaTime * timeScale resulting in 3 more minutes
-    gameTimeMinutes += 3;
-    while (gameTimeMinutes >= 60) { gameTimeMinutes -= 60; gameTimeHours++; }
-    while (gameTimeHours >= 24) { gameTimeHours -= 24;}
-    assertEquals(gameTimeHours, 7, "Game time hour rollover (6:58 + 3min -> 7:01)");
-    assertEquals(gameTimeMinutes, 1, "Game time minute rollover (6:58 + 3min -> 7:01)");
+    // Test 1: Basic increment
+    GameLogic.gameTimeHours = 6;
+    GameLogic.gameTimeMinutes = 0;
+    let timeData = GameLogic.updateGameTimeData(30 / GameLogic.timeScale); // Simulate 30 game minutes
+    assertEquals(GameLogic.gameTimeHours, 6, "Game time hour after 30 min");
+    assertEquals(Math.floor(GameLogic.gameTimeMinutes), 30, "Game time minute after 30 min");
 
-    gameTimeHours = 23;
-    gameTimeMinutes = 58;
-    gameTimeMinutes += 3;
-    while (gameTimeMinutes >= 60) { gameTimeMinutes -= 60; gameTimeHours++; }
-    while (gameTimeHours >= 24) { gameTimeHours -= 24; }
-    assertEquals(gameTimeHours, 0, "Game time day rollover (23:58 + 3min -> 00:01)");
-    assertEquals(gameTimeMinutes, 1, "Game time minute rollover for day (23:58 + 3min -> 00:01)");
+    // Test 2: Hour rollover
+    GameLogic.gameTimeHours = 6;
+    GameLogic.gameTimeMinutes = 58;
+    timeData = GameLogic.updateGameTimeData(3 / GameLogic.timeScale); // Simulate 3 game minutes
+    assertEquals(GameLogic.gameTimeHours, 7, "Game time hour rollover (6:58 + 3min -> 7:01)");
+    assertEquals(Math.floor(GameLogic.gameTimeMinutes), 1, "Game time minute rollover (6:58 + 3min -> 7:01)");
+    assertFalse(timeData.newDay, "newDay should be false after simple hour rollover");
 
-    gameTimeHours = 10;
-    gameTimeMinutes = 15;
-    gameTimeMinutes += 30; // Add 30 minutes
-    while (gameTimeMinutes >= 60) { gameTimeMinutes -= 60; gameTimeHours++; }
-    while (gameTimeHours >= 24) { gameTimeHours -= 24; }
-    assertEquals(gameTimeHours, 10, "Game time simple minute add (10:15 + 30min -> 10:45)");
-    assertEquals(gameTimeMinutes, 45, "Game time simple minute add value (10:15 + 30min -> 10:45)");
+    // Test 3: Day rollover
+    GameLogic.gameTimeHours = 23;
+    GameLogic.gameTimeMinutes = 58;
+    timeData = GameLogic.updateGameTimeData(3 / GameLogic.timeScale); // Simulate 3 game minutes
+    assertEquals(GameLogic.gameTimeHours, 0, "Game time day rollover (23:58 + 3min -> 00:01)");
+    assertEquals(Math.floor(GameLogic.gameTimeMinutes), 1, "Game time minute rollover for day (23:58 + 3min -> 00:01)");
+    assertTrue(timeData.newDay, "newDay should be true after day rollover");
 
-    // Restore original time (important if other tests depend on it, though ideally they shouldn't)
-    gameTimeHours = originalHours;
-    gameTimeMinutes = originalMinutes;
+    // Restore original time
+    GameLogic.gameTimeHours = originalHours;
+    GameLogic.gameTimeMinutes = originalMinutes;
 }
 
 function testFishSpawning() {
     window.testLogger.log("--- Testing Fish Spawning ---");
-    let originalPopulation = [...activeFishPopulation]; // Shallow copy
+    // GameLogic.activeFishPopulation is exported as let, so we can clear it for a predictable test
+    GameLogic.activeFishPopulation = [];
 
-    spawnFishPopulation(); // This function has console logs we can't easily capture here
+    GameLogic.spawnFishPopulation();
 
-    assertEquals(activeFishPopulation.length, maxFishInArea, `Population should be ${maxFishInArea}`);
-    if (activeFishPopulation.length > 0) {
-        const firstFish = activeFishPopulation[0];
+    assertEquals(GameLogic.activeFishPopulation.length, GameLogic.maxFishInArea, `Population should be ${GameLogic.maxFishInArea}`);
+    if (GameLogic.activeFishPopulation.length > 0) {
+        const firstFish = GameLogic.activeFishPopulation[0];
         assertTrue(typeof firstFish.species.name === 'string', "Spawned fish has species name");
         assertTrue(typeof firstFish.size === 'number' && firstFish.size >= firstFish.species.sizeRange[0] && firstFish.size <= firstFish.species.sizeRange[1], "Spawned fish size is within species range");
         assertTrue(typeof firstFish.depth === 'number' && firstFish.depth >= firstFish.species.preferredDepthRange[0] && firstFish.depth <= firstFish.species.preferredDepthRange[1], "Spawned fish depth is within species range");
     }
-    // Restore (or re-spawn if other tests depend on a specific initial state)
-    activeFishPopulation = originalPopulation;
-    // If other tests depend on a fresh spawn, they should call spawnFishPopulation themselves.
+    // It's good practice for tests to clean up their own specific setups if they modify shared state.
+    // For this test, subsequent tests might rely on a normally spawned population.
 }
 
 
 function testBiteAndHookLogic() {
     window.testLogger.log("--- Testing Bite and Hook Logic (Simplified) ---");
 
-    // Mocking necessary global states and functions
-    const originalFishPopulation = [...activeFishPopulation];
-    const originalGameTimeHours = gameTimeHours;
-    const originalCurrentBaitType = currentBaitType;
-    let originalFishToHook = fishToHook;
-    let originalIsCast = isCast;
-    let originalFishBiting = fishBiting;
-    let originalFishHooked = fishHooked;
-    let originalWaitingForBite = waitingForBite;
-
-    let triggerBiteCalledWith = null;
-    const mockTriggerBite = (fish) => { triggerBiteCalledWith = fish; fishBiting = true; fishToHook = fish; /* Simplified side effects */ };
-    const realTriggerBite = window.triggerBite; // Assuming triggerBite is global
-    window.triggerBite = mockTriggerBite;
+    // Save original states from GameLogic
+    const originalFishPopulation = [...GameLogic.activeFishPopulation];
+    const originalGameTimeHours = GameLogic.gameTimeHours;
+    const originalCurrentBaitType = GameLogic.currentBaitType;
+    let originalFishToHook = GameLogic.fishToHook; // This is 'let' in gameLogic
+    let originalIsCast = GameLogic.isCast;
+    let originalFishBiting = GameLogic.fishBiting;
+    let originalFishHooked = GameLogic.fishHooked;
+    let originalWaitingForBite = GameLogic.waitingForBite;
 
     // Setup for a likely bite
-    gameTimeHours = 7; // Perch active
-    currentBaitType = "worm"; // Perch likes worms
-    const testPerchSpecies = fishSpeciesData.find(s => s.name === "River Perch");
-    activeFishPopulation = [{ species: testPerchSpecies, size: 1.0, depth: 3.0 }];
-    isCast = true; fishBiting = false; fishHooked = false; waitingForBite = false; fishToHook = null;
+    GameLogic.gameTimeHours = 7;
+    GameLogic.currentBaitType = "worm";
+    const testPerchSpecies = GameLogic.fishSpeciesData.find(s => s.name === "River Perch");
+    GameLogic.activeFishPopulation = [{ species: testPerchSpecies, size: 1.0, depth: 3.0 }];
 
-    // Mock Math.random for checkForFishBite's random factor and bite chance
+    GameLogic.isCast = true;
+    GameLogic.fishBiting = false;
+    GameLogic.fishHooked = false;
+    GameLogic.waitingForBite = false;
+    GameLogic.fishToHook = null;
+
     let randomCallCount = 0;
-    const mockMathRandomVals = [0.9, 0.1]; // High random factor, then low for bite chance success
+    const mockMathRandomVals = [0.9, 0.1]; // High random factor for score, then success for bite chance
     const originalMathRandom = Math.random;
-    Math.random = () => mockMathRandomVals[randomCallCount++] || 0;
+    Math.random = () => {
+        const val = mockMathRandomVals[randomCallCount];
+        randomCallCount++;
+        return val !== undefined ? val : originalMathRandom(); // Fallback if more calls than mocked
+    };
 
-    checkForFishBite();
-    assertTrue(triggerBiteCalledWith !== null && triggerBiteCalledWith.species.name === "River Perch", "Perch should attempt to bite with favorable conditions");
-    assertTrue(fishBiting, "State fishBiting should be true after triggerBite (mocked)");
-    assertEquals(fishToHook, triggerBiteCalledWith, "fishToHook should be set by triggerBite (mocked)");
+    const potentialBiter = GameLogic.checkForFishBiteLogic(GameLogic.gameTimeHours, GameLogic.currentBaitType);
+    assertTrue(potentialBiter !== null && potentialBiter.species.name === "River Perch", "Perch should be a potential biter with favorable conditions");
+
+    if (potentialBiter) {
+        GameLogic.triggerBiteLogic(potentialBiter);
+        assertTrue(GameLogic.fishBiting, "State fishBiting should be true after triggerBiteLogic");
+        assertEquals(GameLogic.fishToHook.species.name, "River Perch", "fishToHook should be set by triggerBiteLogic");
+    } else {
+         window.testLogger.fail("FAIL: Prerequisite for triggerBiteLogic not met (no potential biter)");
+         testsFailed++;
+    }
 
     randomCallCount = 0; // Reset for next call
-    triggerBiteCalledWith = null; // Reset mock state
 
-    // Test attemptHookFish
-    if (fishBiting && fishToHook) { // Condition must be true from previous test
-        // Mock functions called by attemptHookFish if they have complex side effects
-        const realStartFishPullCycle = window.startFishPullCycle;
-        const realStartEscapeTimer = window.startEscapeTimer;
-        let pullCycleStarted = false; let escapeTimerStarted = false;
-        window.startFishPullCycle = () => { pullCycleStarted = true; };
-        window.startEscapeTimer = () => { escapeTimerStarted = true; };
+    // Test attemptHookFishLogic
+    if (GameLogic.fishBiting && GameLogic.fishToHook) {
+        const hookResult = GameLogic.attemptHookFishLogic();
+        assertTrue(hookResult.success, "attemptHookFishLogic should succeed");
+        assertEquals(hookResult.fish.species.name, "River Perch", "Hooked fish should be Perch");
+        assertTrue(GameLogic.fishHooked, "fishHooked should be true after successful attemptHookFishLogic");
+        assertFalse(GameLogic.fishBiting, "fishBiting should be false after successful attemptHookFishLogic");
+        assertEquals(GameLogic.lineTension, 0, "Line tension should be reset on hook");
 
-        attemptHookFish();
-        assertTrue(fishHooked, "fishHooked should be true after successful attemptHookFish");
-        assertFalse(fishBiting, "fishBiting should be false after successful attemptHookFish");
-        assertTrue(pullCycleStarted, "startFishPullCycle should have been called");
-        assertTrue(escapeTimerStarted, "startEscapeTimer should have been called");
-
-        window.startFishPullCycle = realStartFishPullCycle;
-        window.startEscapeTimer = realStartEscapeTimer;
     } else {
-        window.testLogger.fail("FAIL: Prerequisite for attemptHookFish not met (fish not biting or fishToHook not set)");
-        testsFailed++; // Manually increment as assertEquals won't be hit
+        window.testLogger.fail("FAIL: Prerequisite for attemptHookFishLogic not met (fish not biting or fishToHook not set)");
+        testsFailed++;
     }
 
     // Restore original Math.random and other globals
     Math.random = originalMathRandom;
-    window.triggerBite = realTriggerBite;
-    activeFishPopulation = originalFishPopulation;
-    gameTimeHours = originalGameTimeHours;
-    currentBaitType = originalCurrentBaitType;
-    fishToHook = originalFishToHook;
-    isCast = originalIsCast;
-    fishBiting = originalFishBiting;
-    fishHooked = originalFishHooked;
-    waitingForBite = originalWaitingForBite;
+    GameLogic.activeFishPopulation = originalFishPopulation; // Restore
+    GameLogic.gameTimeHours = originalGameTimeHours;
+    GameLogic.currentBaitType = originalCurrentBaitType;
+    GameLogic.fishToHook = originalFishToHook; // Critical to restore
+    GameLogic.isCast = originalIsCast;
+    GameLogic.fishBiting = originalFishBiting;
+    GameLogic.fishHooked = originalFishHooked;
+    GameLogic.waitingForBite = originalWaitingForBite;
 }
 
 
