@@ -67,6 +67,11 @@ const fishSpeciesData = [
 // For now, let's assume a global bait type. This would be part of player's tackle selection later.
 let currentBaitType = "worm"; // Player starts with worms by default
 
+import { PlayerInventory } from './PlayerInventory.js';
+
+// --- Player State & Inventory ---
+const playerInventory = new PlayerInventory(50); // Start player with 50 gold
+
 // --- Fish AI & Population ---
 let activeFishPopulation = [];
 const maxFishInArea = 15; // Max number of conceptual fish in the current fishing spot
@@ -713,6 +718,16 @@ function animate() {
             resetFishingState();
         } else if (fishCurrentDistance <= 1.0) {
             console.log(`Fish caught! ${fishToHook.species.name} - ${fishToHook.size}kg`);
+
+            const caughtFish = {
+                speciesName: fishToHook.species.name,
+                size: fishToHook.size,
+                // baseValue could be determined by a shopkeeper or species data later
+                // For now, PlayerInventory.addFish will assign a simple default if not provided
+            };
+            playerInventory.addFish(caughtFish);
+            console.log(`Current inventory: ${playerInventory.getFishStock().length} fish, Gold: ${playerInventory.getGoldBalance()}`);
+
             resetFishingState();
         }
 
