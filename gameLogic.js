@@ -15,7 +15,12 @@ export const fishSpeciesData = [
         preferredDepthRange: [1, 5], // meters (conceptual for now)
         baseFightStyle: "jerky", // Short, quick pulls
         activityPeriods: [ {startHour: 6, endHour: 9}, {startHour: 17, endHour: 20} ],
-        baitPreferences: { "worm": 0.9, "small_lure": 0.5, "bread": 0.2 }
+        baitPreferences: { "worm": 0.9, "small_lure": 0.5, "bread": 0.2 },
+        bitePatterns: [
+            { type: "nibble_quick", weight: 0.5, visualCue: "quick_dip", description: "A quick series of light tugs." },
+            { type: "gentle_pull", weight: 0.3, visualCue: "slow_dip", description: "A slow, steady pull." },
+            { type: "hesitant_take", weight: 0.2, visualCue: "dip_pause_dip", description: "A dip, a pause, then another dip." }
+        ]
     },
     {
         name: "Northern Pike",
@@ -23,7 +28,11 @@ export const fishSpeciesData = [
         preferredDepthRange: [2, 8], // meters
         baseFightStyle: "strong_runs", // Long, powerful pulls
         activityPeriods: [ {startHour: 9, endHour: 17} ], // More active midday
-        baitPreferences: { "worm": 0.3, "small_lure": 0.8, "large_lure": 0.9, "fish_bait": 0.7 }
+        baitPreferences: { "worm": 0.3, "small_lure": 0.8, "large_lure": 0.9, "fish_bait": 0.7 },
+        bitePatterns: [
+            { type: "sudden_yank", weight: 0.7, visualCue: "sharp_yank_submerge", description: "A sudden, strong yank, taking the bobber under!" },
+            { type: "aggressive_take", weight: 0.3, visualCue: "fast_submerge", description: "The bobber disappears quickly!" }
+        ]
     },
     {
         name: "Common Bream",
@@ -31,7 +40,11 @@ export const fishSpeciesData = [
         preferredDepthRange: [3, 6], // meters
         baseFightStyle: "steady_pull",
         activityPeriods: [ {startHour: 4, endHour: 8}, {startHour: 20, endHour: 23} ],
-        baitPreferences: { "worm": 0.6, "bread": 0.9, "corn": 0.8, "small_lure": 0.1 }
+        baitPreferences: { "worm": 0.6, "bread": 0.9, "corn": 0.8, "small_lure": 0.1 },
+        bitePatterns: [
+            { type: "shy_nibbles", weight: 0.6, visualCue: "tiny_dips", description: "Very faint, almost imperceptible nibbles." },
+            { type: "slow_take", weight: 0.4, visualCue: "very_slow_submerge", description: "The bobber sinks very slowly and deliberately." }
+        ]
     }
 ];
 
@@ -56,6 +69,7 @@ export let isCast = false;
 export let waitingForBite = false; // This flag helps manage the interval between bite checks
 export let fishBiting = false;
 export let fishHooked = false;
+export let currentBiteTypeDetails = null; // Stores details of the current bite type
 
 export let castStartTime = 0; // Will be set by Date.now() or similar (or clock.elapsedTime from game.js)
 export const hookWindowDuration = 1500;
@@ -190,6 +204,7 @@ export function resetFishingStateLogic() {
 
     // fishToHook is critical to reset
     fishToHook = null;
+    currentBiteTypeDetails = null; // Reset bite type details
 
     lineTension = 0;
     fishPulling = false;
@@ -231,11 +246,30 @@ export function checkForFishBiteLogic(currentGameTimeHours, currentBait) {
 
         const overallBiteThreshold = 60;
         if (potentialBiters[0].score >= overallBiteThreshold) {
-            const chanceToBite = potentialBiters[0].score / 120;
+            const chanceToBite = potentialBiters[0].score / 120; // Max score approx 50+50+20=120.
             if (Math.random() < chanceToBite) {
-                // fishToHook = potentialBiters[0].fish; // This state will be set by triggerBiteLogic
-                console.log(`Logic: Potential bite from: ${potentialBiters[0].fish.species.name} (Score: ${potentialBiters[0].score.toFixed(2)}, Chance: ${chanceToBite.toFixed(2)})`);
-                return potentialBiters[0].fish; // Return the fish that intends to bite
+                const bitingFishData = potentialBiters[0].fish;
+
+                // Select a bite pattern based on weights
+                let selectedBitePattern = null;
+                if (bitingFishData.species.bitePatterns && bitingFishData.species.bitePatterns.length > 0) {
+                    const totalWeight = bitingFishData.species.bitePatterns.reduce((sum, p) => sum + p.weight, 0);
+                    let randomWeight = Math.random() * totalWeight;
+                    for (const pattern of bitingFishData.species.bitePatterns) {
+                        if (randomWeight < pattern.weight) {
+                            selectedBitePattern = pattern;
+                            break;
+                        }
+                        randomWeight -= pattern.weight;
+                    }
+                    if (!selectedBitePattern) selectedBitePattern = bitingFishData.species.bitePatterns[0]; // Fallback
+                } else {
+                    // Fallback if no patterns defined (should not happen with new data)
+                    selectedBitePattern = { type: "standard_pull", visualCue: "sharp_yank", description: "A standard bite." };
+                }
+
+                console.log(`Logic: Potential bite from: ${bitingFishData.species.name} (Score: ${potentialBiters[0].score.toFixed(2)}, Chance: ${chanceToBite.toFixed(2)}), Bite Type: ${selectedBitePattern.type}`);
+                return { fish: bitingFishData, biteTypeDetails: selectedBitePattern };
             }
         }
     }
@@ -243,7 +277,53 @@ export function checkForFishBiteLogic(currentGameTimeHours, currentBait) {
 }
 
 
-export function triggerBiteLogic(fishThatWillBite) {
+export function triggerBiteLogic(biteData) { // biteData is { fish, biteTypeDetails }
+    if (!biteData || !biteData.fish || !biteData.biteTypeDetails) return false;
+
+    fishToHook = biteData.fish; // Set the specific fish
+    currentBiteTypeDetails = biteData.biteTypeDetails; // Store the selected bite pattern details
+    fishBiting = true;
+    waitingForBite = false;
+    console.log(`Logic: ${fishToHook.species.name} is now biting with type "${currentBiteTypeDetails.type}". Size: ${fishToHook.size}kg`);
+    return true;
+}
+
+export function fishGotAwayLogic() {
+    // Called by game.js when hookWindowTimeout expires
+    if (fishBiting) { // Check if a fish was actually biting
+        console.log(`Logic: ${fishToHook ? fishToHook.species.name : 'A fish'} (${currentBiteTypeDetails ? currentBiteTypeDetails.type : 'unknown bite'}) got away!`);
+        fishBiting = false;
+        fishToHook = null;
+        currentBiteTypeDetails = null; // Reset bite type details
+        waitingForBite = false; // Allow new checks
+        // lastFishCheckTime should be updated by game.js after this
+        return true;
+    }
+    return false;
+}
+
+export function attemptHookFishLogic() {
+    if (fishBiting && fishToHook && currentBiteTypeDetails) {
+        setFishBitingState(false); // Also clears currentBiteTypeDetails via fishGotAwayLogic if called by timeout, so set directly
+        fishBiting = false;
+        setFishHookedState(true, fishToHook);
+
+        console.log(`Logic: ${fishToHook.species.name} hooked! (was a ${currentBiteTypeDetails.type}). Size: ${fishToHook.size}kg`);
+        // currentBiteTypeDetails remains for now, could be used for initial fight behavior
+
+        lineTension = 0;
+
+        return { success: true, fish: fishToHook, biteType: currentBiteTypeDetails };
+    }
+    console.log("Logic: Attempted hook but no fish was biting, fishToHook not set, or biteTypeDetails missing.");
+    return { success: false };
+}
+
+
+// TODO: Move and refactor:
+//       startFishPullCycle (becomes getFishPullCycleTiming, returns data for timer setup)
+//       The main reeling calculations (tension, distance) into calculateReelingPhysics
+//       Ensure resetFishingStateLogic also clears currentBiteTypeDetails
     if (!fishThatWillBite) return false;
 
     fishToHook = fishThatWillBite; // Set the specific fish

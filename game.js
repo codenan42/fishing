@@ -278,16 +278,55 @@ function reelIn() { // This function now primarily handles visual cleanup and ca
 // startFishPullCycle, resetFishingState have been moved to gameLogic.js and will be adapted.
 
 // This will become the visual part of triggerBite
-function triggerBiteVisuals(fishThatBit) {
-    console.log(`Visuals: ${fishThatBit.species.name} is biting! Size: ${fishThatBit.size}kg`);
-    bobber.position.y = water.position.y - 0.1; // Dip bobber
+function triggerBiteVisuals(fishThatBit) { // fishThatBit contains species, size, and now biteTypeDetails
+    const biteDetails = GameLogic.currentBiteTypeDetails; // Get from GameLogic, set by triggerBiteLogic
+
+    if (!biteDetails) {
+        console.error("triggerBiteVisuals called without biteDetails!");
+        // Fallback to a generic bite visual
+        bobber.position.y = water.position.y - 0.1;
+        console.log(`Visuals: ${fishThatBit.species.name} is biting! Size: ${fishThatBit.size}kg (Generic Bite Visual)`);
+    } else {
+        console.log(`Visuals: ${fishThatBit.species.name} (${fishThatBit.size}kg) - ${biteDetails.description}`);
+
+        switch (biteDetails.visualCue) {
+            case "quick_dip":
+                // Simulate a quick series of dips - can be improved with Tweening later
+                bobber.position.y = water.position.y - 0.05;
+                setTimeout(() => { if(GameLogic.fishBiting) bobber.position.y = water.position.y + 0.02; }, 100);
+                setTimeout(() => { if(GameLogic.fishBiting) bobber.position.y = water.position.y - 0.07; }, 250);
+                setTimeout(() => { if(GameLogic.fishBiting) bobber.position.y = water.position.y + 0.02; }, 400);
+                setTimeout(() => { if(GameLogic.fishBiting) bobber.position.y = water.position.y - 0.1; }, 550); // Final dip
+                break;
+            case "slow_dip":
+            case "very_slow_submerge":
+                // For now, just a deeper, slightly slower looking dip. Tweening would make this better.
+                bobber.position.y = water.position.y - 0.15;
+                break;
+            case "dip_pause_dip":
+                bobber.position.y = water.position.y - 0.08;
+                setTimeout(() => { if(GameLogic.fishBiting) bobber.position.y = water.position.y + 0.03; }, 300); // Slight rise (pause)
+                setTimeout(() => { if(GameLogic.fishBiting) bobber.position.y = water.position.y - 0.12; }, 600); // Second dip
+                break;
+            case "sharp_yank_submerge":
+            case "fast_submerge":
+                bobber.position.y = water.position.y - 0.25; // Yanked under hard
+                break;
+            default:
+                bobber.position.y = water.position.y - 0.1; // Default dip
+        }
+    }
 
     // Player has a window to hook the fish - timer managed by game.js
     clearTimeout(hookWindowTimeoutID); // Clear previous if any
     hookWindowTimeoutID = setTimeout(() => {
         if (GameLogic.fishBiting) { // Check logical state
-            console.log(`${GameLogic.fishToHook.species.name} got away (visual timeout)!`);
+            const fishName = GameLogic.fishToHook ? GameLogic.fishToHook.species.name : "A fish";
+            const biteTypeName = GameLogic.currentBiteTypeDetails ? GameLogic.currentBiteTypeDetails.type : "unknown bite";
+            console.log(`${fishName} (${biteTypeName}) got away (visual timeout)!`);
+
             GameLogic.fishGotAwayLogic(); // Call the consolidated logic function
+
             bobber.position.y = water.position.y + 0.05; // Bobber returns to normal
             GameLogic.lastFishCheckTime = clock.elapsedTime; // Update check time for next bite check cycle
         }
