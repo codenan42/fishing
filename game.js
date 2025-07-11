@@ -159,19 +159,53 @@ if (directionalLight) {
 // Set camera to a typical first-person starting position (origin, looking forward)
 camera.position.set(0, 1.6, 0); // Player height at 1.6 units, standing at origin for now
 
-// Create the fishing rod
-const rodGeometry = new THREE.CylinderGeometry(0.05, 0.02, 2.5, 8); // radiusTop, radiusBottom, height, radialSegments
+// Create the fishing rod (segmented)
+const fishingRod = new THREE.Group();
 const rodMaterial = new THREE.MeshPhongMaterial({ color: 0x654321 }); // Brown color
-const fishingRod = new THREE.Mesh(rodGeometry, rodMaterial);
 
-// Position the rod relative to the camera
-// This will make it appear in the player's "hand"
-fishingRod.position.set(0.5, -0.4, -1); // Right side, slightly down, in front
+const rodBaseLength = 1.0;
+const rodMidLength = 0.8;
+const rodTipLength = 0.7;
+
+const rodBaseGeometry = new THREE.CylinderGeometry(0.04, 0.05, rodBaseLength, 8);
+const rodBase = new THREE.Mesh(rodBaseGeometry, rodMaterial);
+rodBase.position.y = rodBaseLength / 2; // Position base at its center
+
+const rodMidGeometry = new THREE.CylinderGeometry(0.03, 0.04, rodMidLength, 8);
+const rodMid = new THREE.Mesh(rodMidGeometry, rodMaterial);
+rodMid.position.y = rodMidLength / 2; // Position relative to its parent's top
+
+const rodTipSegmentGeometry = new THREE.CylinderGeometry(0.02, 0.03, rodTipLength, 8);
+const rodTipSegment = new THREE.Mesh(rodTipSegmentGeometry, rodMaterial);
+rodTipSegment.position.y = rodTipLength / 2; // Position relative to its parent's top
+
+// Assemble the rod
+rodMid.add(rodTipSegment); // Tip is child of Mid
+rodBase.add(rodMid);      // Mid is child of Base
+fishingRod.add(rodBase);   // Base is child of the main Group
+
+// Adjust local positions for segments to connect end-to-end
+// Base is already centered in the fishingRod group.
+// Mid segment's origin should be at the top of the base segment.
+rodMid.position.y = rodBaseLength / 2 + rodMidLength / 2;
+// Tip segment's origin should be at the top of the mid segment.
+rodTipSegment.position.y = rodMidLength / 2 + rodTipLength / 2;
+
+
+// Position the entire rod group relative to the camera
+fishingRod.position.set(0.5, -0.4 - rodBaseLength/2, -1); // Adjusted Y to account for base centered at group origin
 fishingRod.rotation.set(0, -0.2, Math.PI / 5); // Angled slightly
 
 // Add rod to the camera so it moves with it
 camera.add(fishingRod); // Make rod a child of the camera
 scene.add(camera); // Ensure camera (now with rod) is part of the scene
+
+// Store segments for easy access during animation
+const rodSegments = {
+    base: rodBase,
+    mid: rodMid,
+    tip: rodTipSegment
+};
 
 // --- Casting Mechanics ---
 let isCasting = false; // true when line is flying out
@@ -198,9 +232,16 @@ let lastFishCheckTime = 0;
 // --- Reeling Mechanics ---
 let isReeling = false; // Player is actively trying to reel in a hooked fish
 let lineTension = 0;
-const maxLineTension = 100;
-const tensionIncreaseRate = 1; // Per frame while reeling against fish pull
+const currentLineBreakingPoint = 100; // Formerly maxLineTension. Represents the line's strength.
+const lineStretchFactor = 0.95; // Higher value = less stretchy. 1.0 = no stretch effect.
+const tensionIncreaseRate = 1; // Base rate per frame while reeling against fish pull (if line not slipping)
 const tensionDecreaseRate = 0.5; // Per frame naturally, or faster if not reeling
+
+// Drag System
+let reelDragSetting = 0.3; // Player adjustable (0.0 to 1.0), fraction of maxReelDragForce
+const maxReelDragForce = currentLineBreakingPoint * 0.8; // Max force drag can apply (e.g., 80)
+const lineSlipSpeed = 0.2; // Units per frame fish takes line when drag slips
+
 let fishPulling = false;
 let fishPullTimer = null;
 let fishPullDuration = 0;
@@ -215,13 +256,20 @@ const bobberGeometry = new THREE.SphereGeometry(0.1, 8, 8);
 const bobberMaterial = new THREE.MeshPhongMaterial({ color: 0xff0000 }); // Red bobber
 
 // Fishing Line
-const lineMaterial = new THREE.LineBasicMaterial({ color: 0xcccccc });
+const lineMaterial = new THREE.LineBasicMaterial({ color: 0xcccccc, linewidth: 2 }); // Attempt to set linewidth > 1
 const linePoints = [new THREE.Vector3(), new THREE.Vector3()];
 const lineGeometry = new THREE.BufferGeometry().setFromPoints(linePoints);
 
+// Note: WebGL line width limitations often mean linewidth > 1 has no effect.
+// For thicker lines, THREE.MeshLine or a thin TubeGeometry would be needed.
+
 function getRodTipPosition() {
-    const rodTipLocal = new THREE.Vector3(0, 1.25, 0); // Tip is at the top of the cylinder (y-axis of rod)
-    return fishingRod.localToWorld(rodTipLocal.clone()); // Convert local rod tip to world space
+    // The tip of the rod is the top of the rodTipSegment
+    // rodTipSegment's position is relative to rodMid
+    // rodMid's position is relative to rodBase
+    // fishingRod (group) is relative to camera
+    const rodTipLocal = new THREE.Vector3(0, rodTipLength / 2, 0); // Local top of the tip segment
+    return rodTipSegment.localToWorld(rodTipLocal.clone()); // Convert local tip segment top to world space
 }
 
 function castLine() {
@@ -268,6 +316,34 @@ function updateFishingLine() {
     }
     fishingLine.geometry.attributes.position.needsUpdate = true;
     fishingLine.geometry.computeBoundingSphere(); // Important for visibility
+}
+
+function updateFishingLine() {
+    if (!fishingLine) return;
+
+    const rodTipPosition = getRodTipPosition();
+    const bobberPosition = bobber.position;
+
+    const maxSag = 0.75; // Max sag in world units
+    // Sag is inversely proportional to tension. Full sag at 0 tension, no sag at 25% of breaking point.
+    const tensionRatio = Math.min(lineTension / (currentLineBreakingPoint * 0.25), 1.0);
+    const currentSag = maxSag * (1 - tensionRatio);
+
+    let points;
+    if (currentSag > 0.01 && isCast) { // Apply sag only if significant and line is cast (not reeling hard or mid-cast)
+        const midPoint = new THREE.Vector3().addVectors(rodTipPosition, bobberPosition).multiplyScalar(0.5);
+        midPoint.y -= currentSag; // Apply sag downwards
+
+        const curve = new THREE.QuadraticBezierCurve3(rodTipPosition, midPoint, bobberPosition);
+        points = curve.getPoints(10); // Get 10 segments for the curve
+    } else {
+        // Straight line if tension is high or no sag
+        points = [rodTipPosition, bobberPosition];
+    }
+
+    fishingLine.geometry.setFromPoints(points);
+    fishingLine.geometry.attributes.position.needsUpdate = true;
+    fishingLine.geometry.computeBoundingSphere();
 }
 
 
@@ -558,55 +634,102 @@ function animate() {
         updateFishingLine();
     }
 
-    if (fishHooked && fishToHook) { // Ensure fishToHook is set before accessing its properties
-        let currentTensionIncreaseRate = tensionIncreaseRate;
-        let currentReelInSpeed = reelInSpeed;
+    if (fishHooked && fishToHook) {
+        const deltaTime = clock.getDelta();
+        const currentDragResistance = maxReelDragForce * reelDragSetting;
 
-        // Adjust rates based on fish size
-        const sizeRatio = fishToHook.size / fishToHook.species.sizeRange[1]; // 0 to 1 for relative size
-        currentTensionIncreaseRate += sizeRatio * 0.5; // Larger fish increase tension a bit faster
-        currentReelInSpeed *= Math.max(0.5, 1 - sizeRatio * 0.75); // Larger fish are harder to reel (min 50% speed)
+        const sizeRatio = fishToHook.size / fishToHook.species.sizeRange[1];
+        const fishStrengthFactor = 1 + sizeRatio * 1.5;
 
+        const actualTensionIncreaseRate = tensionIncreaseRate * fishStrengthFactor; // How much tension player adds by reeling against fish
+        const actualReelInSpeed = (reelInSpeed / fishStrengthFactor) * deltaTime * 60; // Convert to per-second rate
+
+        let fishPullForceMagnitudeThisFrame = 0;
+
+        if (fishPulling) {
+            // Fish's pull strength can be conceptualized as a rate of tension increase if line was static
+            fishPullForceMagnitudeThisFrame = (tensionIncreaseRate * 2.0 * fishStrengthFactor) * deltaTime * 60; // Stronger than player's reel
+
+            let dipAmount = 0.15 + Math.random() * 0.1;
+            if(fishToHook.species.baseFightStyle === "jerky") dipAmount += Math.random() * 0.1;
+            if(fishToHook.species.baseFightStyle === "strong_runs") dipAmount += 0.05;
+            bobber.position.y = water.position.y - dipAmount;
+        } else if (!fishBiting) {
+            bobber.position.y = water.position.y - 0.05;
+        }
 
         if (isReeling) { // Player is holding mouse button
             if (fishPulling) {
-                lineTension += currentTensionIncreaseRate;
-                console.log(`Tension: ${lineTension.toFixed(1)} (${fishToHook.species.name} pulling)`);
-            } else {
-                // Reel in the fish
-                fishCurrentDistance -= currentReelInSpeed;
-                lineTension -= tensionDecreaseRate * 0.5; // Tension slightly decreases when reeling normally
-                // Move bobber closer to player
+                // Player reeling + Fish pulling
+                // Tension increases due to both player and fish, moderated by stretch
+                lineTension += (actualTensionIncreaseRate + fishPullForceMagnitudeThisFrame * 0.5) * lineStretchFactor * deltaTime * 60;
+                console.log(`Tension: ${lineTension.toFixed(1)} (${fishToHook.species.name} pulling HARD against reel)`);
+
+                // Can fish still take line if its pull overcomes player + drag?
+                if (fishPullForceMagnitudeThisFrame > currentDragResistance + (actualTensionIncreaseRate * deltaTime * 60)) {
+                     const lineTakenFactor = (fishPullForceMagnitudeThisFrame - (currentDragResistance + actualTensionIncreaseRate * deltaTime * 60)) / (currentDragResistance +1);
+                     const lineTaken = lineSlipSpeed * lineTakenFactor * deltaTime * 60;
+                     fishCurrentDistance += lineTaken;
+                     const directionAwayFromRod = new THREE.Vector3().subVectors(bobber.position, getRodTipPosition()).normalize();
+                     bobber.position.add(directionAwayFromRod.multiplyScalar(lineTaken));
+                     console.log(`${fishToHook.species.name} takes line (${lineTaken.toFixed(2)}m) against reel! Dist: ${fishCurrentDistance.toFixed(1)}m`);
+                }
+            } else { // Player reeling, fish not actively pulling
+                fishCurrentDistance -= actualReelInSpeed;
+                lineTension -= tensionDecreaseRate * 0.5 * deltaTime * 60;
                 const rodTipPos = getRodTipPosition();
                 const directionToRod = new THREE.Vector3().subVectors(rodTipPos, bobber.position).normalize();
-                bobber.position.add(directionToRod.multiplyScalar(reelInSpeed)); // This is an approximation
-
-                console.log(`Reeling. Fish at: ${fishCurrentDistance.toFixed(1)}m. Tension: ${lineTension.toFixed(1)}`);
+                // Ensure bobber doesn't pass rod tip
+                const distanceToMove = Math.min(actualReelInSpeed, fishCurrentDistance - 0.1); // -0.1 to prevent overshooting
+                if (distanceToMove > 0) {
+                    bobber.position.add(directionToRod.multiplyScalar(distanceToMove));
+                }
+                console.log(`Reeling ${fishToHook.species.name}. Dist: ${fishCurrentDistance.toFixed(1)}m. Tension: ${lineTension.toFixed(1)}`);
             }
-        } else { // Player released mouse button
-            lineTension -= tensionDecreaseRate; // Tension decreases if not reeling
+        } else { // Player NOT reeling
+            if (fishPulling && fishPullForceMagnitudeThisFrame > currentDragResistance) {
+                // Fish pulling against drag ONLY
+                const lineTakenFactor = (fishPullForceMagnitudeThisFrame - currentDragResistance) / (currentDragResistance + 1);
+                const lineTaken = lineSlipSpeed * lineTakenFactor * deltaTime * 60;
+                fishCurrentDistance += lineTaken;
+                // Tension should build up to drag setting, then line slips
+                lineTension += (fishPullForceMagnitudeThisFrame - lineTension) * 0.1; // Approach drag resistance
+                lineTension = Math.min(lineTension, currentDragResistance + fishPullForceMagnitudeThisFrame *0.05); // Allow slight overshoot if fish is strong
+
+                const directionAwayFromRod = new THREE.Vector3().subVectors(bobber.position, getRodTipPosition()).normalize();
+                bobber.position.add(directionAwayFromRod.multiplyScalar(lineTaken));
+                console.log(`${fishToHook.species.name} takes line on drag! (${lineTaken.toFixed(2)}m). Dist: ${fishCurrentDistance.toFixed(1)}m. Tension: ${lineTension.toFixed(1)}`);
+            } else {
+                // Fish not pulling significantly against drag, player not reeling: tension decreases
+                lineTension -= tensionDecreaseRate * deltaTime * 60;
+            }
         }
-        lineTension = Math.max(0, lineTension); // Clamp tension at 0
+
+        lineTension = Math.max(0, lineTension); // Clamp tension at 0 (don't allow it to go way over break for long)
 
         // Check for win/loss conditions
-        if (lineTension >= maxLineTension) {
+        if (lineTension >= currentLineBreakingPoint) {
             console.log("Line snapped! Tension too high.");
             resetFishingState();
-        } else if (fishCurrentDistance <= 1.0) { // Fish is close enough to be "caught" (e.g., 1 meter from rod tip)
-            console.log("Fish caught!");
-            // For now, just reset. Later, show fish, add to inventory, etc.
+        } else if (fishCurrentDistance <= 1.0) {
+            console.log(`Fish caught! ${fishToHook.species.name} - ${fishToHook.size}kg`);
             resetFishingState();
         }
 
-        // Bobber visual update based on fish pull (even if not reeling)
-        if (fishPulling) {
-            let dipAmount = 0.15 + Math.random() * 0.1;
-            if(fishToHook.species.baseFightStyle === "jerky") dipAmount += Math.random() * 0.1; // More erratic for jerky
-            if(fishToHook.species.baseFightStyle === "strong_runs") dipAmount += 0.05; // Deeper for strong runs
-            bobber.position.y = water.position.y - dipAmount;
-        } else if (!fishBiting) { // if not the initial bite phase (i.e., fish is hooked and player is fighting)
-            bobber.position.y = water.position.y - 0.05; // Slightly submerged while fighting
-        }
+        // Rod Bending
+        const bendFactor = Math.min(lineTension / (currentLineBreakingPoint * 0.8), 1); // Normalize tension for bending, cap at 80% of breaking for full bend
+        const maxBendBase = 0.05; // Radians
+        const maxBendMid = Math.PI / 16;
+        const maxBendTip = Math.PI / 8;
+
+        rodSegments.base.rotation.x = -maxBendBase * bendFactor;
+        rodSegments.mid.rotation.x = -maxBendMid * bendFactor;   // Relative to base
+        rodSegments.tip.rotation.x = -maxBendTip * bendFactor;   // Relative to mid
+    } else {
+        // No tension, straighten the rod
+        rodSegments.base.rotation.x = 0;
+        rodSegments.mid.rotation.x = 0;
+        rodSegments.tip.rotation.x = 0;
     }
 
 
