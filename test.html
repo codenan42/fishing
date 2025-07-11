@@ -1,0 +1,78 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Fishing Game Unit Tests</title>
+    <style>
+        body { font-family: monospace; padding: 10px; }
+        .log { margin-bottom: 5px; }
+        .pass { color: green; }
+        .fail { color: red; }
+        .summary { margin-top: 20px; font-weight: bold; }
+    </style>
+</head>
+<body>
+    <h1>Fishing Game Unit Test Results</h1>
+    <p>Check the browser console for detailed test output and summary.</p>
+    <div id="test-results"></div>
+
+    <!-- Game canvas and time display (needed for game.js to not error out immediately) -->
+    <canvas id="gameCanvas" style="display:none;"></canvas>
+    <div id="timeDisplay" style="display:none;"></div>
+
+    <!-- Import map for Three.js (same as index.html) -->
+    <script type="importmap">
+        {
+            "imports": {
+                "three": "https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.module.min.js"
+            }
+        }
+    </script>
+
+    <!--
+        Include game.js as a module.
+        It might try to initialize Three.js scene, which we don't strictly need for all unit tests,
+        but some functions might depend on its global variables being declared.
+        We will try to test functions that are as isolated as possible.
+    -->
+    <script type="module" src="game.js"></script>
+
+    <!-- Test script itself -->
+    <script type="module" src="game.test.js"></script>
+
+    <script type="module">
+        // This script will reference test suites run from game.test.js
+        // game.test.js should populate a global results object or call a global logging function.
+
+        // Basic reporting to the HTML page (optional, console is primary)
+        const resultsDiv = document.getElementById('test-results');
+
+        function logToPage(message, type = 'log') {
+            const p = document.createElement('p');
+            p.textContent = message;
+            p.className = type; // 'log', 'pass', 'fail'
+            resultsDiv.appendChild(p);
+            console[type === 'log' ? 'log' : (type === 'pass' ? 'info' : 'error')](message);
+        }
+
+        // Expose for game.test.js to use
+        window.testLogger = {
+            log: (msg) => logToPage(msg, 'log'),
+            pass: (msg) => logToPage(msg, 'pass'),
+            fail: (msg) => logToPage(msg, 'fail'),
+            summarize: (passed, failed) => {
+                const summaryMsg = `Test Summary: ${passed} passed, ${failed} failed.`;
+                const summaryClass = failed > 0 ? 'fail' : 'pass';
+                const p = document.createElement('p');
+                p.textContent = summaryMsg;
+                p.className = `summary ${summaryClass}`;
+                resultsDiv.appendChild(p);
+                console.log('%c' + summaryMsg, `color: ${failed > 0 ? 'red' : 'green'}; font-weight: bold;`);
+            }
+        };
+
+        // game.test.js is expected to call window.runAllTests() or similar
+        // which will then use window.testLogger
+    </script>
+</body>
+</html>
