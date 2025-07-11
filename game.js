@@ -545,6 +545,51 @@ GameLogic.spawnFishPopulation(); // Create initial fish population using GameLog
 // Start the animation loop
 animate();
 
+// --- Shop Interaction ---
+window.addEventListener('keydown', (event) => {
+    if (event.key.toLowerCase() === 's' && !GameLogic.isCasting && !GameLogic.fishBiting && !GameLogic.fishHooked && !GameLogic.isReeling) {
+        openShopSellInterface();
+    }
+});
+
+function openShopSellInterface() {
+    console.log("--- Welcome to the Fish Market! ---");
+    const sellableFish = GameLogic.playerInventory.getFishStock();
+
+    if (sellableFish.length === 0) {
+        console.log("Your inventory is empty. Go catch some fish!");
+        alert("Your inventory is empty. Go catch some fish!");
+        return;
+    }
+
+    let message = "Fish you can sell:\n";
+    const fishWithPrices = sellableFish.map((fish, index) => {
+        const price = GameLogic.getFishSellPrice(fish);
+        return { ...fish, price: price, displayIndex: index + 1 };
+    });
+
+    fishWithPrices.forEach(fish => {
+        message += `${fish.displayIndex}: ${fish.speciesName} (${fish.size}kg) - ${fish.price} gold\n`;
+    });
+    message += "\nEnter the number of the fish to sell, 'all' to sell everything, or 'cancel'.";
+
+    console.log(message); // Log to console for easier viewing if prompt is small
+    const playerChoice = window.prompt(message, "");
+
+    // Selling logic will be handled in the next step based on playerChoice
+    if (playerChoice) {
+        processSellInput(playerChoice, fishWithPrices);
+    } else {
+        console.log("Shop interaction cancelled.");
+    }
+}
+
+// Placeholder for now, will be implemented in the next step
+function processSellInput(input, fishListWithPrices) {
+    console.log(`Player chose to sell: ${input}. Detailed processing to be implemented.`);
+    // This function will handle selling individual fish, all fish, or cancelling.
+}
+
 
 // --- Mouse Look Controls ---
 let isPointerLocked = false;

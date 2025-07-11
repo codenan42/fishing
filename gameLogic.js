@@ -1,5 +1,11 @@
 // gameLogic.js
-import { PlayerInventory } from './PlayerInventory.js'; // Assuming PlayerInventory.js is in the same directory
+import { PlayerInventory } from './PlayerInventory.js';
+import { Shopkeeper } from './Shopkeeper.js';
+
+// --- Game Instances ---
+export const playerInventory = new PlayerInventory(50); // Start player with 50 gold
+const shopkeeper = new Shopkeeper();
+
 
 // --- Game Configuration & Data ---
 export const fishSpeciesData = [
@@ -384,4 +390,47 @@ export function calculateReelingPhysics(deltaTime, isPlayerReeling, currentBobbe
         fishSnapped: fishSnapped,
         fishCaught: fishIsCaught
     };
+}
+
+export function getFishSellPrice(fishObject) {
+    if (!fishObject || !fishObject.speciesName || typeof fishObject.size !== 'number') {
+        console.error("GameLogic.getFishSellPrice: Invalid fish object provided", fishObject);
+        return 0;
+    }
+    return shopkeeper.getSellPrice(fishObject.speciesName, fishObject.size);
+}
+
+export function sellFishFromInventory(fishId) {
+    // Find the fish in the inventory using the fishStock which is part of playerInventory
+    let fishToSell = null;
+    let fishIndex = -1;
+
+    for (let i = 0; i < playerInventory.fishStock.length; i++) {
+        if (playerInventory.fishStock[i].id === fishId) {
+            fishToSell = playerInventory.fishStock[i];
+            fishIndex = i; // Store index for removal if using splice, or rely on removeFish by ID
+            break;
+        }
+    }
+
+    if (!fishToSell) {
+        return { success: false, message: `Fish with ID ${fishId} not found in inventory.` };
+    }
+
+    const price = getFishSellPrice(fishToSell); // Uses the shopkeeper instance
+
+    // playerInventory.removeFish needs to be robust. Assuming it removes by ID.
+    if (playerInventory.removeFish(fishId)) { // removeFish is part of PlayerInventory class
+        playerInventory.addGold(price); // addGold is part of PlayerInventory class
+        return {
+            success: true,
+            soldFishName: fishToSell.speciesName,
+            size: fishToSell.size,
+            price: price,
+            newGoldBalance: playerInventory.goldBalance // Access directly after update
+        };
+    } else {
+        // This case implies removeFish failed even if fish was found by ID, which is unlikely if find and remove use same ID logic.
+        return { success: false, message: `Error removing fish with ID ${fishId} after finding it.` };
+    }
 }
