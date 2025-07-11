@@ -1,0 +1,10 @@
+body {
+    margin: 0;
+    overflow: hidden; /* Prevent scrollbars */
+}
+
+#gameCanvas {
+    display: block; /* Remove extra space below canvas */
+    width: 100vw;
+    height: 100vh;
+}

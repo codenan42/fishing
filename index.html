@@ -1,0 +1,23 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>First Person Fishing Game</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <canvas id="gameCanvas"></canvas>
+    <script type="importmap">
+        {
+            "imports": {
+                "three": "https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.module.min.js"
+            }
+        }
+    </script>
+    <div id="timeDisplay" style="position: absolute; top: 10px; left: 10px; color: white; font-family: monospace; font-size: 16px; background-color: rgba(0,0,0,0.5); padding: 5px;">
+        Time: 00:00
+    </div>
+    <script type="module" src="game.js"></script>
+</body>
+</html>
