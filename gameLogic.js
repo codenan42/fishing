@@ -48,9 +48,6 @@ export const fishSpeciesData = [
     }
 ];
 
-// --- Player State & Inventory ---
-export const playerInventory = new PlayerInventory(50); // Start player with 50 gold
-
 // --- Fish AI & Population ---
 export let activeFishPopulation = [];
 export const maxFishInArea = 15; // Max number of conceptual fish in the current fishing spot
