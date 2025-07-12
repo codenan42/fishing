@@ -317,53 +317,10 @@ export function attemptHookFishLogic() {
 }
 
 
-// TODO: Move and refactor:
+// TODO: Move and refactor: (This is now done)
 //       startFishPullCycle (becomes getFishPullCycleTiming, returns data for timer setup)
 //       The main reeling calculations (tension, distance) into calculateReelingPhysics
 //       Ensure resetFishingStateLogic also clears currentBiteTypeDetails
-    if (!fishThatWillBite) return false;
-
-    fishToHook = fishThatWillBite; // Set the specific fish
-    fishBiting = true;
-    waitingForBite = false; // No longer waiting, bite is happening
-    // The visual cue (bobber dip) and hookWindowTimeout are handled by game.js
-    console.log(`Logic: ${fishToHook.species.name} is now biting. Size: ${fishToHook.size}kg`);
-    return true; // Indicate bite sequence initiated
-}
-
-export function fishGotAwayLogic() {
-    // Called by game.js when hookWindowTimeout expires
-    if (fishBiting) { // Check if a fish was actually biting
-        console.log(`Logic: ${fishToHook ? fishToHook.species.name : 'A fish'} got away!`);
-        fishBiting = false;
-        fishToHook = null;
-        waitingForBite = false; // Allow new checks
-        // lastFishCheckTime should be updated by game.js after this
-        return true;
-    }
-    return false;
-}
-
-export function attemptHookFishLogic() {
-    if (fishBiting && fishToHook) {
-        // fishBiting = false; // This is done by setFishHookedState
-        // fishHooked = true; // This is done by setFishHookedState
-        setFishBitingState(false);
-        setFishHookedState(true, fishToHook); // Pass fishToHook to ensure it's the one being hooked
-
-        console.log(`Logic: ${fishToHook.species.name} hooked! Size: ${fishToHook.size}kg`);
-
-        // Initialize reeling parameters (these are logical, bobber distance is visual)
-        // fishInitialDistance will be set by game.js based on bobber's world position
-        // fishCurrentDistance = fishInitialDistance;
-        lineTension = 0;
-
-        // Starting fish pull cycle and escape timer will be signaled to game.js
-        return { success: true, fish: fishToHook };
-    }
-    console.log("Logic: Attempted hook but no fish was biting or fishToHook not set.");
-    return { success: false };
-}
 
 
 export function getFishPullCycleTiming() {
